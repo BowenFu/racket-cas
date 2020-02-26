@@ -1857,7 +1857,7 @@
   (check-equal? (Cos (⊕ x (⊗ 2 @p @pi))) (Cos x))
   (check-equal? (Cos (⊗ 4/3 @pi)) -1/2)
   (check-equal? (Cos (Acos x)) 'x)
-  (check-equal? (Cos (Asin x)) '(+ (* 1/2 @pi) (* -1 x))))
+  (check-equal? (Cos (Asin x)) '(+ (* 1/2 @pi) (* -1 x)))
   (check-equal? (Cos @i) '(cosh 1)))
 
 (define (Sin: u)
