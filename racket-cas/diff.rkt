@@ -31,6 +31,9 @@
     [(Ln u)    (⊗ (⊘ 1 u) (d u))]
     [(Cos u)   (⊗ (⊖ 0 (Sin u)) (d u))]
     [(Sin u)   (⊗ (Cos u) (d u))]
+    [(Function us) (cond
+                       [(andmap (lambda (u) (free-of u x)) us) 0]
+                       [else `(diff ,u ,x)])]
     [(app: f us)  #:when (symbol? f)
                   (match us
                     [(list u) (cond [(eq? u x)  (Diff `(,f ,x) x)]
@@ -72,4 +75,6 @@
   (check-equal? (diff (Sin (⊗ x x)) x) (⊗ 2 (Cos (Expt x 2)) x))
   ; TODO: ASE should rewrite the result to (* '(expt x x) (+ 1 (ln x)))
   (check-equal? (diff (Expt x x) x) '(* (expt @e (* x (ln x))) (+ 1 (ln x))))
+  (check-equal? (diff '(function (x)) x) '(diff (function (x)) x))
+  (check-equal? (diff '(function (x)) 'z) 0)
   )

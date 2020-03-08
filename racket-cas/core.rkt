@@ -1254,6 +1254,29 @@
 
 
 ;;;
+;;; Symbolic Functions
+;;;
+
+(define (Function: variables)
+  (cond
+    [(not (andmap symbol? variables))
+     (raise-argument-error 'Function: (~a "not all variables are symbols: " variables))]
+    [(not (equal? (remove-duplicates variables) variables))
+     (raise-argument-error 'Function: (~a "duplicate variables: " variables))]
+    [else
+     (list 'function variables)]))
+
+(define-match-expander Function
+  (λ (stx) (syntax-parse stx [(_ vs) #'(list 'function vs)]))
+  (λ (stx) (syntax-parse stx [(_ vs) #'(Function: vs)] [_ (identifier? stx) #'Function:])))
+
+(module+ test 
+  (check-equal? (Function '(x y)) '(function (x y)))
+  (check-equal? (Function '()) '(function ()))
+  (check-exn exn:fail:contract? (lambda () (Function '(2)))))
+
+
+;;;
 ;;; Sum and products
 ;;;
 
@@ -1301,6 +1324,8 @@
            [r #t]
            [r.bf #t]
            [x #t]
+           [(Function vars)
+            (andmap f vars)]
            [(app: _ us) (andmap f us)])))
   (f u))
 
@@ -1308,7 +1333,12 @@
   (let () (define u (Expt (⊕ x 1) 2))
     (check-equal? (free-of u x) #f)
     (check-false (or  (free-of u x) (free-of u 1) (free-of u 2) (free-of u (⊕ x 1))))
-    (check-true  (and (free-of u y) (free-of u 3) (free-of u (⊕ x 2))))))
+    (check-true  (and (free-of u y) (free-of u 3) (free-of u (⊕ x 2)))))
+  (let ()
+    (define f (Function '(x)))
+    (define g (Function '(z)))
+    (check-equal? (free-of f x) #f)
+    (check-equal? (free-of g x) #t)))
 
 (define (part u . ns)
   ; as in Maxima http://maxima.sourceforge.net/docs/manual/en/maxima_6.html#IDX225 
