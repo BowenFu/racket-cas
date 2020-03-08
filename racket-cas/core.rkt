@@ -1254,26 +1254,26 @@
 
 
 ;;;
-;;; Symbolic Functions
+;;; Symbolic Dependent Variables
 ;;;
 
-(define (Function: variables)
+(define (Dependent: variables)
   (cond
     [(not (andmap symbol? variables))
-     (raise-argument-error 'Function: (~a "not all variables are symbols: " variables))]
+     (raise-argument-error 'Dependent (~a "not all variables are symbols: " variables))]
     [(not (equal? (remove-duplicates variables) variables))
-     (raise-argument-error 'Function: (~a "duplicate variables: " variables))]
+     (raise-argument-error 'Dependent (~a "duplicate variables: " variables))]
     [else
-     (list 'function variables)]))
+     (list 'dependent variables)]))
 
-(define-match-expander Function
-  (λ (stx) (syntax-parse stx [(_ vs) #'(list 'function vs)]))
-  (λ (stx) (syntax-parse stx [(_ vs) #'(Function: vs)] [_ (identifier? stx) #'Function:])))
+(define-match-expander Dependent
+  (λ (stx) (syntax-parse stx [(_ vs) #'(list 'dependent vs)]))
+  (λ (stx) (syntax-parse stx [(_ vs) #'(Dependent: vs)] [_ (identifier? stx) #'Dependent:])))
 
 (module+ test 
-  (check-equal? (Function '(x y)) '(function (x y)))
-  (check-equal? (Function '()) '(function ()))
-  (check-exn exn:fail:contract? (lambda () (Function '(2)))))
+  (check-equal? (Dependent '(x y)) '(dependent (x y)))
+  (check-equal? (Dependent '()) '(dependent ()))
+  (check-exn exn:fail:contract? (lambda () (Dependent '(2)))))
 
 
 ;;;
@@ -1324,7 +1324,7 @@
            [r #t]
            [r.bf #t]
            [x #t]
-           [(Function vars)
+           [(Dependent vars)
             (andmap f vars)]
            [(app: _ us) (andmap f us)])))
   (f u))
@@ -1335,8 +1335,8 @@
     (check-false (or  (free-of u x) (free-of u 1) (free-of u 2) (free-of u (⊕ x 1))))
     (check-true  (and (free-of u y) (free-of u 3) (free-of u (⊕ x 2)))))
   (let ()
-    (define f (Function '(x)))
-    (define g (Function '(z)))
+    (define f (Dependent '(x)))
+    (define g (Dependent '(z)))
     (check-equal? (free-of f x) #f)
     (check-equal? (free-of g x) #t)))
 
