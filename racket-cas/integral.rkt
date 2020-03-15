@@ -159,12 +159,18 @@
 (define (simplify-expt expr)
   (match expr
     [(Expt (Expt u -1) v) (Expt u (⊗ -1 v))]
+    [(Exp (TimesTerms (Ln u) vs ...)) #:when real-mode?
+                                     (Expt u (apply ⊗ vs))]
+    [(Exp (PlusTerms (Ln u) vs ...))
+                                     (⊗ u (Exp (apply ⊕ vs)))]
     [(app: f us)      (normalize (cons f (map simplify-expt us)))]
     [_ expr]))
 
 (module+ test
   (displayln "TEST - simplify-expt")
-  (check-equal? (simplify-expt (reduce (diff (Atan 'x) 'x))) '(expt (+ 1 (expt x 2)) 1/2)))
+  (check-equal? (simplify-expt (reduce (diff (Atan 'x) 'x))) '(expt (+ 1 (expt x 2)) 1/2))
+  (check-equal? (simplify-expt '(expt @e (* -1/2 (ln x)))) '(expt x -1/2))
+  (check-equal? (simplify-expt '(expt @e (+ -1/2 (ln x)))) '(* (expt @e -1/2) x)))
   
 ; Also match u as (Expt u 1).
 ; Will not match (Expt u 0).
@@ -784,3 +790,61 @@
   )
 
   
+
+(define (rational-simplify u)
+  (simplify-expt (reduce u)))
+
+(define (get-integrating-factor M N x y d)
+  (when debugging? (displayln (list 'get-integrating-factor M N x y d)))
+  (simplify-expt
+   (cond
+     [(equal? d 0) 1]
+     [else
+      (define F (rational-simplify (⊘ d N)))
+      (cond
+        [(free-of F y) (Exp (integrate F x))]
+        [else
+         (define G (rational-simplify (⊘ (⊖ d) M)))
+         (cond
+           [(free-of G x) (Exp (integrate G y))]
+           [else #f]
+           )
+         ])])))
+
+(module+ test
+  (displayln "TEST - get-integrating-factor")
+  (check-equal? (get-integrating-factor y '(* 2 x) 'x y -1) '(expt x -1/2))
+  #;(check-equal? (get-integrating-factor '(+ 2 (* 3 y (expt x -1)))
+                                          '(+ 3 (* 3 (expt y 2) (expt x -1)))
+                                          'x 'y
+                                          '(+ (* 3 (expt x -1)) (* 3 (expt x -2) (expt y 2))))
+                x))
+; todo: reduce '(* (expt (+ 3 (* 3 (expt y 2) (expt x -1))) -1) (+ (* 3 (expt x -1)) (* 3 (expt x -2) (expt y 2))))
+
+(define (solve-exact M N x y)
+  (cond
+    [(equal? N 0) #f]
+    [(equal? M 0) (Equal y 'C)]
+    [else
+     (define My (diff M y))
+     (define Nx (diff N x))
+     (define d (⊖ My Nx))
+     (define u (get-integrating-factor M N x y d))
+     (cond
+       [u
+        (define g (integrate (⊗ u M) x))
+        (define hp (⊖ (⊗ u N) (diff g y)))
+        (define h (integrate hp y))
+        (Equal (⊕ g h) 'C)]
+       [else #f])]))
+
+
+(module+ test
+  (displayln "TEST - solve-exact")
+  (check-equal? (solve-exact 2 3 x y) '(= (+ (* 2 x) (* 3 y)) C))
+  (check-equal? (solve-exact x y x y) '(= (+ (* 1/2 (expt x 2)) (* 1/2 (expt y 2))) C))
+  (check-equal? (solve-exact '(* 2 x) '(expt x -2) x y) '(= (+ (* 1/2 (expt x 4)) y) C))
+  (check-equal? (solve-exact '(+ (* 2 x) (* 3 (expt y 2))) '(+ (* 6 x y) (expt y 2)) x y)
+                '(= (+ (expt x 2) (* 1/3 (expt y 3)) (* 3 x (expt y 2))) C))
+  #;(check-equal? (solve-exact '(+ 2 (* 3 y (expt x -1))) '(+ 3 (* 3 (expt y 2) (expt x -1))) x y)
+                '(= (+ (* 1/2 (expt x 4)) y) C)))
