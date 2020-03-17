@@ -84,13 +84,16 @@
     [(⊘ u v)
      (match u
        [(TimesTerms (== v) us ...) (apply ⊗ us)]
-       [_ w])]
+       [_ (⊘ (factor-out u) (factor-out v))])]
     [_ w]))
 
 (module+ test
   (displayln "TEST - cancel")
   (check-equal? (normalize '(* (expt (+ 1 x) -1) (cos x) (+ 1 x))) '(* (expt (+ 1 x) -1) (cos x) (+ 1 x)))
-  (check-equal? (cancel '(* (expt (+ 1 x) -1) (cos x) (+ 1 x))) '(cos x)))
+  (check-equal? (cancel '(* (expt (+ 1 x) -1) (cos x) (+ 1 x))) '(cos x))
+  (check-equal? (cancel '(* (+ u (* u v)) (expt u -1))) '(+ 1 v))
+  (check-equal? (cancel (⊘ '(+ (* (+ a b) c) (* (+ a b) d)) '(+ (* a e) (* b e)))) '(* (expt e -1) (+ c d)))
+  )
 
 ; Temp hard-coded reduce patterns for integrate.
 ; Should be replaced by more general rules.
@@ -792,7 +795,7 @@
   
 
 (define (rational-simplify u)
-  (simplify-expt (reduce u)))
+  (cancel u))
 
 (define (get-integrating-factor M N x y d)
   (when debugging? (displayln (list 'get-integrating-factor M N x y d)))
@@ -814,7 +817,7 @@
 (module+ test
   (displayln "TEST - get-integrating-factor")
   (check-equal? (get-integrating-factor y '(* 2 x) 'x y -1) '(expt x -1/2))
-  #;(check-equal? (get-integrating-factor '(+ 2 (* 3 y (expt x -1)))
+  (check-equal? (get-integrating-factor '(+ 2 (* 3 y (expt x -1)))
                                           '(+ 3 (* 3 (expt y 2) (expt x -1)))
                                           'x 'y
                                           '(+ (* 3 (expt x -1)) (* 3 (expt x -2) (expt y 2))))
@@ -846,5 +849,47 @@
   (check-equal? (solve-exact '(* 2 x) '(expt x -2) x y) '(= (+ (* 1/2 (expt x 4)) y) C))
   (check-equal? (solve-exact '(+ (* 2 x) (* 3 (expt y 2))) '(+ (* 6 x y) (expt y 2)) x y)
                 '(= (+ (expt x 2) (* 1/3 (expt y 3)) (* 3 x (expt y 2))) C))
-  #;(check-equal? (solve-exact '(+ 2 (* 3 y (expt x -1))) '(+ 3 (* 3 (expt y 2) (expt x -1))) x y)
-                '(= (+ (* 1/2 (expt x 4)) y) C)))
+  (check-equal? (solve-exact '(+ 2 (* 3 y (expt x -1))) '(+ 3 (* 3 (expt y 2) (expt x -1))) x y)
+                '(= (+ (expt x 2) (* x (+ (* (expt x -1) (expt y 3)) (* 3 y)))) C)))
+
+(define (common-factors u v)
+  (when debugging? (displayln (list 'common-factors u v)))
+  (math-match* (u v)
+               [(p q) (gcd p q)]
+               [((⊗ f u/f) _) (let* [(r (common-factors f v)) (v/r (⊘ v r))] (⊗ r (common-factors u/f v/r)))]
+               [(_ (Prod __)) (common-factors v u)]
+               [((GreedyExpt b r1+) (GreedyExpt b r2+)) (Expt b (min r1+ r2+))]
+               [((GreedyExpt b r1-) (GreedyExpt b r2-)) (Expt b (max r1- r2-))]
+               [(_ _) 1]
+               ))
+
+(module+ test
+  (displayln "TEST - common-factors")
+  (check-equal? (common-factors (⊗ 6 x (Expt y 3)) (⊗ 2 (Sqr x) y z))  (⊗ 2 x y))
+  (check-equal? (common-factors (⊕ x y) (⊗ 'a (⊕ x y))) (⊕ x y))
+  (check-equal? (common-factors '(* 3 (expt x -1)) '(* 3 (expt x -2) (expt y 2))) '(* 3 (expt x -1)))
+  )
+
+(define (factor-out u)
+  (when debugging? (displayln (list 'factor-out u)))
+  (match u
+    [(Prod us) (apply ⊗ (map factor-out us))]
+    [(Expt b e) (Expt (factor-out b) e)]
+    [(Sum us) (let ([s (apply ⊕ (map factor-out us))])
+                (match s
+                  [(Sum vs) (let ([c
+                                   (for/fold ([cf (first vs)])
+                                             ([v (rest vs)])
+                                     (common-factors cf v))])
+                              (⊗ c (apply ⊕ (map (lambda (y) (⊘ y c)) vs))))]
+                  [_ s]
+                  ))]
+    [_ u]
+    ))
+
+(module+ test
+  (displayln "TEST - factor-out")
+  (check-equal? (factor-out (Expt (⊕ (Sqr x) (⊗ x y)) 3)) '(* (expt x 3) (expt (+ x y) 3)))
+  (check-equal? (factor-out (⊗ 'a (⊕ 'b (⊗ 'b x)))) '(* a b (+ 1 x)))
+  (check-equal? (factor-out (⊕ (Sqrt 2) 2)) '(* (expt 2 1/2) (+ 1 (* 2 (expt 2 -1/2)))))
+  )
