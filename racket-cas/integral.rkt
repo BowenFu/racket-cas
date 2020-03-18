@@ -36,7 +36,6 @@
   (define x 'x) (define y 'y) (define z 'z))
 
 
-
 ;;; The pattern (Sum us) matches a sum of the form (+ u ...) and binds us to (list u ...)
 (define-match-expander Sum
   (λ (stx) (syntax-case stx () [(_ us) #'(list* '+ us)])))
@@ -792,7 +791,9 @@
                 '(* (expt x 2) (piecewise (-1/2 (< x 0)) (1/2 (>= x 0)))))
   )
 
-  
+; todo: separate partial and diff
+(define (partial u x)
+    (diff u x))
 
 (define (rational-simplify u)
   (cancel u))
@@ -810,9 +811,14 @@
          (define G (rational-simplify (⊘ (⊖ d) M)))
          (cond
            [(free-of G x) (Exp (integrate G y))]
-           [else #f]
-           )
-         ])])))
+           [else
+            (define R (expand (⊘ (⊖ (partial M y) (partial N x)) (⊖ (⊗ N y) (⊗ M x)))))
+            (define t (gensym 't))
+            (define x*y (⊗ x y))
+            (define R:t (subst R y (⊘ t x)))
+            (cond
+              [(free-of R:t x) (subst (integrate R:t t) t x*y)]
+              [else #f])])])])))
 
 (module+ test
   (displayln "TEST - get-integrating-factor")
@@ -821,10 +827,12 @@
                                           '(+ 3 (* 3 (expt y 2) (expt x -1)))
                                           'x 'y
                                           '(+ (* 3 (expt x -1)) (* 3 (expt x -2) (expt y 2))))
-                x))
-; todo: reduce '(* (expt (+ 3 (* 3 (expt y 2) (expt x -1))) -1) (+ (* 3 (expt x -1)) (* 3 (expt x -2) (expt y 2))))
+                x)
+  (check-equal? (get-integrating-factor y '(+ x (* 3 (expt x 3) (expt y 4))) x y '(+ 1 (* -1 (+ 1 (* 9 (expt x 2) (expt y 4))))))
+                '(* -3 (+ (ln x) (ln y)))))
 
 (define (solve-exact M N x y)
+  (when debugging? (displayln (list 'solve-exact M N x y)))
   (cond
     [(equal? N 0) #f]
     [(equal? M 0) (Equal y 'C)]
@@ -851,6 +859,74 @@
                 '(= (+ (expt x 2) (* 1/3 (expt y 3)) (* 3 x (expt y 2))) C))
   (check-equal? (solve-exact '(+ 2 (* 3 y (expt x -1))) '(+ 3 (* 3 (expt y 2) (expt x -1))) x y)
                 '(= (+ (expt x 2) (* x (+ (* (expt x -1) (expt y 3)) (* 3 y)))) C)))
+
+(define (solve-ode w x y)
+  (define-values (M N) (transform-ode w x y))
+  (solve-exact M N x y))
+
+(module+ test
+  (displayln "TEST - solve-ode")
+  (check-equal? (solve-ode '(= x (d y x)) x y) '(= (+ (* 1/2 (expt x 2)) (* -1 y)) C))
+  (check-equal? (solve-ode '(= (d y x) (* 2 x (expt y 2))) x y) '(= (+ (* -1 (expt x 2)) (* -1 (expt y -1))) C))
+  (check-equal? (solve-ode '(= (+ (* 2 x) (* 3 (expt y 2)) (* (+ (* 6 x y) (expt y 2)) (d y x))) 0) x y)
+                '(= (+ (expt x 2) (* 1/3 (expt y 3)) (* 3 x (expt y 2))) C))
+  (check-equal? (solve-ode '(= (+ 2 (* 3 y (expt x -1)) (* (+ 3 (* 3 (expt y 2) (expt x -1))) (d y x))) 0) x y)
+                '(= (+ (expt x 2) (* x (+ (* (expt x -1) (expt y 3)) (* 3 y)))) C))
+  (check-equal? (solve-ode '(= (+ (* -1 x (expt (+ x 2) -1)) (* y (expt (+ y 1) -1) (d y x))) 0) x y)
+                '(= (+ 1 y (* -1 (ln (+ 1 y))) (* -1 (+ 2 x (* -2 (ln (+ 2 x)))))) C))
+  (check-equal? (solve-ode '(= (+ (* 2 y) (* -1 (expt x 2)) (* (+ (* 2 x) (* -1 (expt y 2))) (d y x))) 0) x y)
+                '(= (+ (* -1/3 (expt x 3)) (* -1/3 (expt y 3)) (* 2 x y)) C))
+  (check-equal? (solve-ode '(= (+ (* (+ y (* -1 (expt x -1))) (d y x)) (* y (expt x -2))) 0) x y)
+                '(= (+ (* 1/2 (expt y 2)) (* -1 (expt x -1) y)) C))
+  (check-equal? (solve-ode '(= (+ (expt (* (expt x 3) (expt y 2)) -1)
+                                  (* (+ (expt (* (expt x 2) (expt y 3)) -1) (* 3 y)) (d y x)))
+                               0) x y)
+                '(= (+ (* 3/2 (expt y 2))
+                       (* -1/2 (expt (expt x -2) 1/3) (expt (expt x 2) -2/3) (expt y -2))
+                       (* 1/2 (expt x -2) (expt y -2))
+                       (* -1/2 (expt x -2) (expt (expt y -2) 1/3) (expt (expt y 2) -2/3)))
+                    C))
+  (check-equal? (expand (solve-ode '(= (+ y (* (+ x (* 3 (expt x 3) (expt y 4))) (d y x))) 0) x y))
+                '(=
+                  (+
+                   (* 9/25 (expt @e (* 5 (ln y))) (expt x 3))
+                   (* -9/5 (expt @e (* 5 (ln y))) (expt x 3) (ln x))
+                   (* -9/5 (expt @e (* 5 (ln y))) (expt x 3) (ln y))
+                   (* -3 x y (ln x))
+                   (* -3 x y (ln y))
+                   (* 3 x y))
+                  C)))
+
+(define (D: u v)
+  `(d ,u ,v))
+
+(define-match-expander D
+  (λ (stx) (syntax-parse stx [(_ u v) #'(list 'd u v)]))
+  (λ (stx) (syntax-parse stx [(_ u v) #'(D: u v)] [_ (identifier? stx) #'D:])))
+
+(module+ test
+  (displayln "TEST - expander: D")
+  (check-equal? (D x y) '(d x y)))
+  
+(define (transform-ode w x y)
+  (when debugging? (displayln (list 'transform-ode w x y)))
+  (match w
+    [(Equal w0 w1) (let* ([v (rational-simplify (⊖ w0 w1))]
+                          [n (numerator v)]
+                          [M (coefficient n (D y x) 0)]
+                          [N (coefficient n (D y x) 1)])
+                   (values M N))]
+    [_ (error 'missing-case)]
+    ))
+
+(module+ test
+  (displayln "TEST - transform-ode")
+  (let-values ([(u v) (transform-ode '(= x (d y x)) x y)])
+    (check-equal? u x)
+    (check-equal? v -1))
+  (let-values ([(u v) (transform-ode '(= (d y x) (* 2 x (expt y 2))) x y)])
+    (check-equal? u '(* -2 x (expt y 2)))
+    (check-equal? v 1)))
 
 (define (common-factors u v)
   (when debugging? (displayln (list 'common-factors u v)))
