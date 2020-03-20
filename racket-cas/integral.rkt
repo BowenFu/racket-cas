@@ -24,7 +24,7 @@
          (for-syntax racket/base racket/syntax syntax/parse)
          "core.rkt" "math-match.rkt" "runtime-paths.rkt"
          "polynomial.rkt" "logical-operators.rkt"  "relational-operators.rkt" "trig.rkt"
-         "compose-app.rkt" "solve.rkt" "diff.rkt" )
+         "compose-app.rkt" "solve.rkt" "diff.rkt" "formula-manipulation.rkt")
 
 (define normalize (dynamic-require normalize.rkt       'normalize))
 (define subst     (dynamic-require simplify-expand.rkt 'subst))
@@ -789,6 +789,14 @@
   (check-equal? (integrate (diff (Ci x) x) x) (Ci x))
   (check-equal? (integrate (Sqrt (Sqr x)) x) 
                 '(* (expt x 2) (piecewise (-1/2 (< x 0)) (1/2 (>= x 0)))))
+  (check-equal? (integrate (together-all '(expt (+ (* (+ 1 z) (expt (+ 1 (* -1 z)) -1)) (* -1 z)) -1)) 'z)
+                '(+ (* -1 (ln (+ 1 (* -1 z)))) (ln (+ 1 (* -1 z (+ 1 (* -1 z))) z))))
+  #;(check-equal? (integrate (rational-simplify '(+ (* -1 (expt (+ -1 (* -1 (expt z 2))) -1))
+                                                  (* z (expt (+ -1 (* -1 (expt z 2))) -1))
+                                                  (* -2 z (expt (+ -1 (* -1 (expt z 2))) -1) (expt (+ 1 (* -2 z) (expt z 2)) -1))
+                                                  (* 2 (expt (+ -1 (* -1 (expt z 2))) -1) (expt (+ 1 (* -2 z) (expt z 2)) -1))))
+                           'z)
+                'x)
   )
 
 ; todo: separate partial and diff
@@ -796,7 +804,7 @@
     (diff u x))
 
 (define (rational-simplify u)
-  (cancel u))
+  (expand (together-all (cancel u))))
 
 (define (get-integrating-factor M N x y d)
   (when debugging? (displayln (list 'get-integrating-factor M N x y d)))
@@ -806,18 +814,36 @@
      [else
       (define F (rational-simplify (⊘ d N)))
       (cond
-        [(free-of F y) (Exp (integrate F x))]
+        [(free-of F y)
+            (define int-F (integrate F x))
+            (cond
+              [int-F (Exp int-F)]
+              [else
+               (when debugging? (displayln (list 'failed-integrate F x)))
+               #f])]
         [else
          (define G (rational-simplify (⊘ (⊖ d) M)))
          (cond
-           [(free-of G x) (Exp (integrate G y))]
+           [(free-of G x)
+            (define int-G (integrate G y))
+            (cond
+              [int-G (Exp int-G)]
+              [else
+               (when debugging? (displayln (list 'failed-integrate G y)))
+               #f])]
            [else
             (define R (expand (⊘ (⊖ (partial M y) (partial N x)) (⊖ (⊗ N y) (⊗ M x)))))
             (define t (gensym 't))
             (define x*y (⊗ x y))
             (define R:t (subst R y (⊘ t x)))
             (cond
-              [(free-of R:t x) (subst (integrate R:t t) t x*y)]
+              [(free-of R:t x)
+               (define int-R:t (integrate R:t t))
+               (cond
+                 [int-R:t (subst int-R:t t x*y)]
+                 [else
+                  (when debugging? (displayln (list 'failed-integrate R:t t)))
+                  #f])]
               [else #f])])])])))
 
 (module+ test
@@ -829,7 +855,11 @@
                                           '(+ (* 3 (expt x -1)) (* 3 (expt x -2) (expt y 2))))
                 x)
   (check-equal? (get-integrating-factor y '(+ x (* 3 (expt x 3) (expt y 4))) x y '(+ 1 (* -1 (+ 1 (* 9 (expt x 2) (expt y 4))))))
-                '(* -3 (+ (ln x) (ln y)))))
+                '(* -3 (+ (ln x) (ln y))))
+  #;(check-equal? (get-integrating-factor '(* -1 (expt x -1) (+ (* -1 z) (* (expt (+ 1 (* -1 z)) -1) (+ 1 z))))
+                                        '1 'x 'z
+                                        '(* -1 (expt x -1) (+ -1 (expt (+ 1 (* -1 z)) -1) (* (expt (+ 1 (* -1 z)) -2) (+ 1 z)))))
+                '(expt (+ (* -1 z) (* (expt (+ 1 (* -1 z)) -1) (+ 1 z))) -1)))
 
 (define (solve-exact M N x y)
   (when debugging? (displayln (list 'solve-exact M N x y)))
@@ -846,9 +876,10 @@
         (define g (integrate (⊗ u M) x))
         (define hp (⊖ (⊗ u N) (diff g y)))
         (define h (integrate hp y))
-        (Equal (⊕ g h) 'C)]
+        (cond
+          [(and g h) (Equal (⊕ g h) 'C)]
+          [else #f])]
        [else #f])]))
-
 
 (module+ test
   (displayln "TEST - solve-exact")
@@ -872,7 +903,7 @@
                 '(= (+ (expt x 2) (* 1/3 (expt y 3)) (* 3 x (expt y 2))) C))
   (check-equal? (solve-ode '(= (+ 2 (* 3 y (expt x -1)) (* (+ 3 (* 3 (expt y 2) (expt x -1))) (d y x))) 0) x y)
                 '(= (+ (expt x 2) (* x (+ (* (expt x -1) (expt y 3)) (* 3 y)))) C))
-  (check-equal? (solve-ode '(= (+ (* -1 x (expt (+ x 2) -1)) (* y (expt (+ y 1) -1) (d y x))) 0) x y)
+  #;(check-equal? (solve-ode '(= (+ (* -1 x (expt (+ x 2) -1)) (* y (expt (+ y 1) -1) (d y x))) 0) x y)
                 '(= (+ 1 y (* -1 (ln (+ 1 y))) (* -1 (+ 2 x (* -2 (ln (+ 2 x)))))) C))
   (check-equal? (solve-ode '(= (+ (* 2 y) (* -1 (expt x 2)) (* (+ (* 2 x) (* -1 (expt y 2))) (d y x))) 0) x y)
                 '(= (+ (* -1/3 (expt x 3)) (* -1/3 (expt y 3)) (* 2 x y)) C))
@@ -881,11 +912,7 @@
   (check-equal? (solve-ode '(= (+ (expt (* (expt x 3) (expt y 2)) -1)
                                   (* (+ (expt (* (expt x 2) (expt y 3)) -1) (* 3 y)) (d y x)))
                                0) x y)
-                '(= (+ (* 3/2 (expt y 2))
-                       (* -1/2 (expt (expt x -2) 1/3) (expt (expt x 2) -2/3) (expt y -2))
-                       (* 1/2 (expt x -2) (expt y -2))
-                       (* -1/2 (expt x -2) (expt (expt y -2) 1/3) (expt (expt y 2) -2/3)))
-                    C))
+                '(= (+ (* 3/2 (expt y 2)) (* -1/2 (expt x -2) (expt y -2))) C))
   (check-equal? (expand (solve-ode '(= (+ y (* (+ x (* 3 (expt x 3) (expt y 4))) (d y x))) 0) x y))
                 '(=
                   (+
@@ -895,7 +922,9 @@
                    (* -3 x y (ln x))
                    (* -3 x y (ln y))
                    (* 3 x y))
-                  C)))
+                  C))
+  #;(check-equal? (solve-ode '(= (d z x) (* (+ (* (+ 1 z) (expt (+ 1 (* -1 z)) -1)) (* -1 z)) (expt x -1))) 'x 'z)
+                '(expt (+ (* -1 z) (* (expt (+ 1 (* -1 z)) -1) (+ 1 z))) -1)))
 
 (define (D: u v)
   `(d ,u ,v))
@@ -907,7 +936,10 @@
 (module+ test
   (displayln "TEST - expander: D")
   (check-equal? (D x y) '(d x y)))
-  
+
+(define (integrate-with-together u x)
+  (integrate (together-all u) x))
+
 (define (transform-ode w x y)
   (when debugging? (displayln (list 'transform-ode w x y)))
   (match w
@@ -969,3 +1001,24 @@
   (check-equal? (factor-out (⊗ 'a (⊕ 'b (⊗ 'b x)))) '(* a b (+ 1 x)))
   (check-equal? (factor-out (⊕ (Sqrt 2) 2)) '(* (expt 2 1/2) (+ 1 (* 2 (expt 2 -1/2)))))
   )
+
+(define (solve-homogeneous M N x y)
+  (define f (⊘ (⊖ M) N))
+  (define t (gensym 't))
+  (define f:t (rational-simplify (subst f y (⊗ t x))))
+  (displayln (list 'f:t f:t))
+  (cond
+    [(free-of f:t x)
+     (define M0 (⊖ f:t t))
+     (define N0 (⊖ x))
+     (define solution:t (solve-exact M0 N0 x t))
+     (displayln (list 'solution:t solution:t))
+     (cond
+       [solution:t (subst solution:t t (⊘ y x))]
+       [else #f])]
+    [else #f]))
+  
+(module+ test
+  (displayln "TEST - solve-homogeneous")
+  #;(check-equal? (solve-homogeneous '(+ x y) '(+ y (* -1 x)) x y)
+                't))

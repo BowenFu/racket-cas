@@ -1,5 +1,6 @@
 #lang racket/base
 (provide together
+         together-all
          combine
          QuotientTogether
          mma-numerator/denominator)
@@ -39,6 +40,18 @@
   (math-match expr
     [(⊕ u v) (together-op2 u (t v))]
     [_       expr]))
+
+(define (together-all expr)
+  (define t together-all)
+  (math-match expr
+    [(⊕ u v) (together-op2 (t u) (t v))]
+    [(app: f us) (cons f (map t us))]
+    [_ expr]))
+
+(module+ test
+  (displayln "TEST - together-all")
+  (check-equal? (together-all '(expt (+ (* (+ 1 z) (expt (+ 1 (* -1 z)) -1)) (* -1 z)) -1))
+                '(expt (* (expt (+ 1 (* -1 z)) -1) (+ 1 (* -1 z (+ 1 (* -1 z))) z)) -1)))
 
 (define (together-op2 u v)
   (define-values (nu du) (numerator/denominator u))
