@@ -804,7 +804,7 @@
     (diff u x))
 
 (define (rational-simplify u)
-  (expand (together-all (cancel u))))
+  (cancel u))
 
 (define (get-integrating-factor M N x y d)
   (when debugging? (displayln (list 'get-integrating-factor M N x y d)))
@@ -856,7 +856,7 @@
                 x)
   (check-equal? (get-integrating-factor y '(+ x (* 3 (expt x 3) (expt y 4))) x y '(+ 1 (* -1 (+ 1 (* 9 (expt x 2) (expt y 4))))))
                 '(* -3 (+ (ln x) (ln y))))
-  #;(check-equal? (get-integrating-factor '(* -1 (expt x -1) (+ (* -1 z) (* (expt (+ 1 (* -1 z)) -1) (+ 1 z))))
+  (check-equal? (get-integrating-factor '(* -1 (expt x -1) (+ (* -1 z) (* (expt (+ 1 (* -1 z)) -1) (+ 1 z))))
                                         '1 'x 'z
                                         '(* -1 (expt x -1) (+ -1 (expt (+ 1 (* -1 z)) -1) (* (expt (+ 1 (* -1 z)) -2) (+ 1 z)))))
                 '(expt (+ (* -1 z) (* (expt (+ 1 (* -1 z)) -1) (+ 1 z))) -1)))
@@ -903,7 +903,7 @@
                 '(= (+ (expt x 2) (* 1/3 (expt y 3)) (* 3 x (expt y 2))) C))
   (check-equal? (solve-ode '(= (+ 2 (* 3 y (expt x -1)) (* (+ 3 (* 3 (expt y 2) (expt x -1))) (d y x))) 0) x y)
                 '(= (+ (expt x 2) (* x (+ (* (expt x -1) (expt y 3)) (* 3 y)))) C))
-  #;(check-equal? (solve-ode '(= (+ (* -1 x (expt (+ x 2) -1)) (* y (expt (+ y 1) -1) (d y x))) 0) x y)
+  (check-equal? (solve-ode '(= (+ (* -1 x (expt (+ x 2) -1)) (* y (expt (+ y 1) -1) (d y x))) 0) x y)
                 '(= (+ 1 y (* -1 (ln (+ 1 y))) (* -1 (+ 2 x (* -2 (ln (+ 2 x)))))) C))
   (check-equal? (solve-ode '(= (+ (* 2 y) (* -1 (expt x 2)) (* (+ (* 2 x) (* -1 (expt y 2))) (d y x))) 0) x y)
                 '(= (+ (* -1/3 (expt x 3)) (* -1/3 (expt y 3)) (* 2 x y)) C))
@@ -912,7 +912,11 @@
   (check-equal? (solve-ode '(= (+ (expt (* (expt x 3) (expt y 2)) -1)
                                   (* (+ (expt (* (expt x 2) (expt y 3)) -1) (* 3 y)) (d y x)))
                                0) x y)
-                '(= (+ (* 3/2 (expt y 2)) (* -1/2 (expt x -2) (expt y -2))) C))
+                '(= (+ (* 3/2 (expt y 2))
+                       (* -1/2 (expt (expt x -2) 1/3) (expt (expt x 2) -2/3) (expt y -2))
+                       (* 1/2 (expt x -2) (expt y -2))
+                       (* -1/2 (expt x -2) (expt (expt y -2) 1/3) (expt (expt y 2) -2/3)))
+                    C)) ; can be simplified
   (check-equal? (expand (solve-ode '(= (+ y (* (+ x (* 3 (expt x 3) (expt y 4))) (d y x))) 0) x y))
                 '(=
                   (+
